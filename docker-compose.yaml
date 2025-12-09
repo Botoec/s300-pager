@@ -1,0 +1,35 @@
+#version: '3.9'
+
+services:
+  bot:
+    build: .
+    container_name: pager-bot
+    ports:
+      - "8065:8065"  # Если оставите FastAPI, иначе удалите
+    env_file:
+      - ./envs/.env.dev
+    depends_on:
+      - redis
+  #    env_file:
+  #      - envs/.env.dev
+
+  redis:
+    image: redis:7.4.1-alpine
+    container_name: pager-redis
+    restart: always
+    ports:
+      - "6379:6379"
+#    volumes:
+#      - redis-data:/data  # Персистентность
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+
+#networks:
+#  default:
+#    external: true
+#    name: api_gw_bridge

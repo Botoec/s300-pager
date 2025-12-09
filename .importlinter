@@ -1,0 +1,21 @@
+[importlinter]
+root_packages = app  # Корневой пакет — app (как в /app/domain и т.д.)
+
+[contract:NoCycles]
+name = Prevent Circular Imports
+type = forbidden
+forbid =
+    app.domain.* -> app.infrastructure.*
+    app.ports.* -> app.domain.*  # Ports не зависит от domain (если нужно)
+    app.application.* -> app.infrastructure.*  # Application не зависит от adapters
+
+[contract:LayeredArchitecture]
+name = Enforce Layers
+type = layers
+layers =
+    domain
+    application
+    ports
+    infrastructure
+ignore_imports =
+    app.infrastructure.* -> app.domain.*  # Игнор, если adapters зависят от domain (нормально в CA)
