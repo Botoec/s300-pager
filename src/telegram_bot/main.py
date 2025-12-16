@@ -14,7 +14,7 @@ logger = structlog.get_logger()
 async def main():
     container = make_async_container(AppProvider())
 
-    event_port = await container.get(EventPort)
+    # event_port = await container.get(EventPort)
     message_port = await container.get(MessagePort)
     auth_service = await container.get(AuthService)
     notification_service = await container.get(NotificationService)
@@ -36,7 +36,7 @@ async def main():
 
     # Запускаем задачи с TaskGroup для structured concurrency
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(event_port.consume_events())
+        # tg.create_task(event_port.consume_events())
         tg.create_task(message_port.start_polling(auth_service, notification_service, storage_port))
 
         await stop_event.wait()  # Блокировка до сигнала
