@@ -2,15 +2,15 @@ import json
 import structlog
 import redis.asyncio as redis
 
-# from ports import StoragePort
+# from ports import RedisStoragePort
 from telegram_bot.config import settings
 
 
-from telegram_bot.ports.storage_port import StoragePort
+from telegram_bot.ports.redis_storage_port import RedisStoragePort
 
 logger = structlog.get_logger()
 
-class RedisAdapter(StoragePort):
+class RedisAdapter(RedisStoragePort):
     def __init__(self):
         self.client = redis.from_url(settings.REDIS_URL)
 

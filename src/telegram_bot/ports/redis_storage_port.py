@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-class StoragePort(ABC):
+
+class RedisStoragePort(ABC):
     @abstractmethod
     async def get(self, key: str) -> Any:
         pass

@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR-Сканер для Пейджера</title>
-    <script src="telegram-web-app.js"></script>
+<!--    <script src="telegram-web-app.js"></script>-->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background-color: #f0f0f0; }
         #status { margin-top: 20px; font-size: 16px; color: #333; }
@@ -14,30 +15,6 @@
     <h1>Сканирование QR-кода</h1>
     <p>Подождите, открывается камера...</p>
     <div id="status"></div>
-
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();  // Инициализация WebApp
-
-        const statusDiv = document.getElementById('status');
-
-        console.log("WebApp opened, starting scan...");  // Лог открытия
-        tg.sendData("test 123")
-        // Автоматический запуск сканирования
-        tg.showScanQrPopup({ text: "Отсканируйте QR-код со страницы входа" }, (qrText) => {
-            console.log("QR callback called with text:", qrText);  // Лог callback
-            if (qrText) {
-                statusDiv.textContent = 'QR декодирован: ' + qrText;
-                tg.sendData(qrText);  // Отправка токена боту
-                console.log("Data sent to bot:", qrText);  // Лог отправки
-                tg.closeScanQrPopup();  // Закрытие попапа после скана
-                tg.close();  // Закрытие WebApp после отправки
-            } else {
-                statusDiv.textContent = 'Сканирование отменено.';
-                console.log("Scan cancelled or failed");
-            }
-            return true;
-        });
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>

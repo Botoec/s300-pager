@@ -1,11 +1,11 @@
 from .message_port import MessagePort
-from .event_port import EventPort
+from telegram_bot.ports.kafka.consumer_port import ConsumerPort
 from .auth_port import AuthPort
-from .storage_port import StoragePort
+from .redis_storage_port import RedisStoragePort
 
 __all__ = [
     'MessagePort',
-    'EventPort',
+    'ConsumerPort',
     'AuthPort',
-    'StoragePort',
+    'RedisStoragePort',
 ]

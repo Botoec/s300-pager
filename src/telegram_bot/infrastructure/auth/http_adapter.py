@@ -11,7 +11,10 @@ class HttpAuthAdapter(AuthPort):
         async with aiohttp.ClientSession() as session:
             logger.info(f'phone: {phone}, user_id: {user_id}')
             # TODO
-            async with session.post(f"{settings.GW_API_URL}/auth/private/telegram/auth/verify_by_phone/", json={"phone": '9633494219', "telegram_user_id": user_id}) as resp:
+            async with session.post(
+                f"{settings.GW_API_URL}/auth/private/telegram/auth/verify_by_phone/",
+                json={"phone": '9633494219', "telegram_user_id": user_id}
+            ) as resp:
                 return await resp.json()
 
     async def check_user_for_notifications(self, event: CallEvent) -> dict:
@@ -22,5 +25,8 @@ class HttpAuthAdapter(AuthPort):
     async def authenticate(self, profile_number: str, user_id: int) -> dict:
         async with aiohttp.ClientSession() as session:
             # TODO
-            async with session.post(f"{settings.GW_API_URL}/auth/private/telegram/auth/authenticate/", json={"profile": profile_number, "telegram_user_id": user_id}) as resp:
+            async with session.post(
+                f"{settings.GW_API_URL}/auth/private/telegram/auth/authenticate/",
+                json={"profile": profile_number, "telegram_user_id": user_id}
+            ) as resp:
                 return await resp.json()

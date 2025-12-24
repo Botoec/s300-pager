@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from telegram_bot.domain.entities import AuthToken
+
 
 class AuthPort(ABC):
     @abstractmethod

@@ -1,49 +1,56 @@
 import asyncio
-import signal
+
 import structlog
 from dishka import make_async_container
 
 from telegram_bot.di.providers import AppProvider
-from telegram_bot.ports.event_port import EventPort
-from telegram_bot.ports.message_port import MessagePort
-from telegram_bot.application.services import AuthService, NotificationService
-from telegram_bot.ports.storage_port import StoragePort
+from telegram_bot.ports import MessagePort, ConsumerPort
+from telegram_bot.ports.kafka.producer_port import ProducerPort
 
 logger = structlog.get_logger()
+
 
 async def main():
     container = make_async_container(AppProvider())
 
-    # event_port = await container.get(EventPort)
-    message_port = await container.get(MessagePort)
-    auth_service = await container.get(AuthService)
-    notification_service = await container.get(NotificationService)
-    storage_port = await container.get(StoragePort)
+    async with container() as app_container:
+        message_port: MessagePort = await app_container.get(MessagePort)
+        kafka_consumer: ConsumerPort = await app_container.get(ConsumerPort)
+        kafka_producer: ProducerPort = await app_container.get(ProducerPort)
 
-    # Ожидаем сигнала завершения (graceful shutdown)
-    loop = asyncio.get_running_loop()
-    stop_event = asyncio.Event()
+        await kafka_producer.start()
+        await kafka_consumer.start()
 
-    def shutdown(sig, frame):
-        logger.info(f"Received signal {sig.name}, shutting down")
-        stop_event.set()
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(kafka_consumer.consume())
+                tg.create_task(message_port.start_polling())
 
-    # Правильный lambda с параметрами
-    loop.add_signal_handler(signal.SIGINT, shutdown)
-    loop.add_signal_handler(signal.SIGTERM, shutdown)
+            logger.info("Все задачи завершились корректно.")
 
-    logger.warning('create_tasks <<<')
+        except* Exception as eg:
+            logger.error(f"Одна или несколько задач завершились с ошибкой: {eg.exceptions}")
 
-    # Запускаем задачи с TaskGroup для structured concurrency
-    async with asyncio.TaskGroup() as tg:
-        # tg.create_task(event_port.consume_events())
-        tg.create_task(message_port.start_polling(auth_service, notification_service, storage_port))
+        finally:
+            await kafka_consumer.stop()
+            await kafka_producer.stop()
 
-        await stop_event.wait()  # Блокировка до сигнала
 
-    # Cleanup (TaskGroup автоматически отменит при выходе)
-    logger.info("Closing container")
-    await container.close()
+# def _handle_shutdown(loop: asyncio.AbstractEventLoop):
+#     """Обработчик SIGINT/SIGTERM — отменяем все задачи"""
+#     tasks = [task for task in asyncio.all_tasks(loop) if task is not asyncio.current_task(loop)]
+#     for task in tasks:
+#         task.cancel()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # loop = asyncio.get_event_loop()
+    #
+    # # Ловим сигналы для graceful shutdown
+    # for sig in (signal.SIGINT, signal.SIGTERM):
+    #     loop.add_signal_handler(sig, _handle_shutdown, loop)
+
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.warning("\nБот остановлен пользователем.")

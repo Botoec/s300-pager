@@ -1,3 +1,5 @@
+from typing import Optional
+
 import jwt
 from datetime import datetime, timedelta
 import structlog
@@ -17,7 +19,7 @@ from telegram_bot.domain.entities import PhoneAuth, JwtTokens, CallEvent
 
 
 from telegram_bot.ports.auth_port import AuthPort
-from telegram_bot.ports.storage_port import StoragePort
+from telegram_bot.ports.redis_storage_port import RedisStoragePort
 from telegram_bot.ports.message_port import MessagePort
 
 
@@ -26,14 +28,19 @@ logger = structlog.get_logger()
 
 
 class PhoneAuthUseCase:
-    def __init__(self, auth_port: AuthPort, storage_port: StoragePort):
+    def __init__(self, auth_port: AuthPort, redis_storage_port: RedisStoragePort):
         self.auth_port = auth_port
-        self.storage_port = storage_port
+        self.redis_storage_port = redis_storage_port
 
     async def execute(self, phone_auth: PhoneAuth) -> dict:
         result = await self.auth_port.verify_phone(phone_auth.phone_number, phone_auth.user_id)
         if isinstance(result, dict) and result.get('code') == 'accounts_not_found':
-            return {'message': 'Ваш номер телефона не найден. Пожалуйста, свяжитесь со службой технической поддержки +78123857300 (добавочный 200) и скажите, что у Вас не получается зарегистрироваться в телеграм-боте «Пейджер.»'}
+            return {
+                'message': 'Ваш номер телефона не найден. Пожалуйста, свяжитесь со '
+                           'службой технической поддержки +78123857300 (добавочный 200) '
+                           'и скажите, что у Вас не получается зарегистрироваться '
+                           'в телеграм-боте «Пейджер.»'
+            }
 
         elif isinstance(result, list):
             from collections import defaultdict
@@ -46,12 +53,17 @@ class PhoneAuthUseCase:
             conflict_messages = []
             tokens = {}  # Хранение токенов по организациям или общий
 
-            # TODO авторизация первого пользователя, на FE в ЛК проверить переключение (в disp создать задачу на переключение)
+            # TODO авторизация первого пользователя, на FE в ЛК проверить переключение
+            #  (в client-panel-v4 создать задачу на переключение)
             for org_name, employees in org_employees.items():
                 logger.warning(f'org_employees: {org_employees}')
                 if len(employees) > 1:
                     conflict_messages.append(
-                        f'В организации {org_name} Ваш номер телефона привязан к нескольким сотрудникам. Для получения уведомлений по этой организации необходимо настроить уникальный номер для каждого сотрудника. Пожалуйста, обратитесь к своему руководителю, чтобы решить эту проблему.')
+                        f'В организации {org_name} Ваш номер телефона привязан к нескольким '
+                        f'сотрудникам. Для получения уведомлений по этой организации необходимо '
+                        f'настроить уникальный номер для каждого сотрудника. Пожалуйста, '
+                        f'обратитесь к своему руководителю, чтобы решить эту проблему.'
+                    )
                 else:
                     employee = employees[0]
                     profile_number = employee['number']
@@ -70,12 +82,13 @@ class PhoneAuthUseCase:
                 return {'message': '\n'.join(conflict_messages)}
 
             if organizations:
-                # Сохраняем токены и организации в storage (Redis)
-                await self.storage_port.set(f'user:{phone_auth.user_id}:orgs', organizations)
-                await self.storage_port.set(f'user:{phone_auth.user_id}:tokens', tokens)  # С TTL для refresh_token lifetime
+                await self.redis_storage_port.set(f'user:{phone_auth.user_id}:orgs', organizations) # TODO ttl
+                await self.redis_storage_port.set(f'user:{phone_auth.user_id}:tokens', tokens) # TODO ttl
+                # await self.storage_port.set(f'qr_token:{phone_auth.qr_token}')
 
                 return {
-                    'message': 'Вы успешно авторизованы. Теперь вы будете получать уведомления по всем организациям, где вы состоите, прямо сюда.',
+                    'message': 'Вы успешно авторизованы. Теперь вы будете получать '
+                               'уведомления по всем организациям, где вы состоите, прямо сюда.',
                     'status': 'success',
                 }
             else:
@@ -85,59 +98,87 @@ class PhoneAuthUseCase:
             return {'message': 'Неизвестная ошибка авторизации.'}
 
 class QrAuthUseCase:
-    def __init__(self, auth_port: AuthPort, storage_port: StoragePort):
+    def __init__(self, auth_port: AuthPort, redis_storage_port: RedisStoragePort):
         self.auth_port = auth_port
-        self.storage_port = storage_port
+        self.redis_storage_port = redis_storage_port
 
-    async def validate_token(self, token_value: str, user_id: int) -> bool:
-        token = await self.storage_port.get(f'auth_token:{token_value}')
-        if not token or token['user_id'] != user_id or datetime.now() > token['expires_at']:
+    async def validate_token(
+            self,
+            token_value: str,
+            user_id: int
+    ) -> bool | dict:
+        token_data = await self.redis_storage_port.get(f'qr_token:{token_value}')
+
+        logger.warning(f'search token_data by qr_token:{token_value}')
+        logger.warning(f'token_data: {token_data}')
+
+
+        if not token_data:
+            logger.warning(f'QR token не найден или просрочен')
+            # TODO вывод в сообщение
             return False
-        # Проверка перепроверки номера (пример: счетчик в storage)
-        recheck_needed = await self._check_recheck_needed(user_id)
-        if recheck_needed:
-            # Запрос перепроверки (симулируем)
-            pass
-        return True
 
-    async def confirm_auth(self, token_value: str, user_id: int) -> JwtTokens:
-        if await self.validate_token(token_value, user_id):
-            # Генерация JWT (симуляция)
-            access = jwt.encode({'user_id': user_id, 'exp': datetime.utcnow() + settings.ACCESS_TOKEN_LIFETIME}, 'secret')
-            refresh = jwt.encode({'user_id': user_id, 'exp': datetime.utcnow() + settings.REFRESH_TOKEN_LIFETIME}, 'secret')
-            await self.storage_port.delete(f'auth_token:{token_value}')  # Аннулировать
-            return JwtTokens(access, refresh)
-        return None
+        if token_data.get('status') in ('confirmed', 'used', 'cancelled'):
+            logger.warning(f'QR token уже использован или отменен')
+            return False
 
-    async def _check_recheck_needed(self, user_id: int) -> bool:
-        count = await self.storage_port.incr(f'user:{user_id}:auth_count')
-        last_check = await self.storage_port.get(f'user:{user_id}:last_phone_check')
-        if count % settings.PHONE_RECHECK_COUNT == 0 or (last_check and (datetime.now() - last_check) > timedelta(days=settings.PHONE_RECHECK_INTERVAL)):
-            return True
-        return False
+
+        # TODO отдельная валидация telegram_user_id
+
+        return token_data
+
+    async def confirm_auth(self, token_value: str, user_id: int) -> dict | bool:
+        token_data = await self.validate_token(token_value, user_id)
+
+        if not token_data:
+            return False
+
+        await self.update_token_status(token_value, token_data, user_id, 'confirmed')
+        return token_data
+
+    async def update_token_status(self, token_value: str, token_data: dict, user_id: int, status: str) -> None:
+        # TODO
+        await self.redis_storage_port.set(
+            f'qr_token:{token_value}',
+            {
+                **token_data,
+                'telegram_user_id': user_id,
+                'status': status,
+            }
+        )
+
+    # async def _check_recheck_needed(self, user_id: int) -> bool:
+    #     count = await self.redis_storage_port.incr(f'user:{user_id}:auth_count')
+    #     last_check = await self.redis_storage_port.get(f'user:{user_id}:last_phone_check')
+    #     if count % settings.PHONE_RECHECK_COUNT == 0 or (last_check and (datetime.now() - last_check) > timedelta(days=settings.PHONE_RECHECK_INTERVAL)):
+    #         return True
+    #     return False
 
 class NotificationUseCase:
-    def __init__(self, message_port: MessagePort, storage_port: StoragePort, auth_port: AuthPort):
+    def __init__(self, message_port: MessagePort, redis_storage_port: RedisStoragePort, auth_port: AuthPort):
         self.message_port = message_port
-        self.storage_port = storage_port
+        self.redis_storage_port = redis_storage_port
         self.auth_port = auth_port
 
     async def handle_call_event(self, event: CallEvent):
-        # Проверка предусловий (HTTP)
         user_check = await self.auth_port.check_user_for_notifications(event)
         if not user_check['authorized'] or user_check['dnd'] == 'on' or not user_check['extension']:
             return
 
         if event.event_type == 'dial':
             msg_id = await self.message_port.send_message(event.user_id, self._format_incoming(event))
-            await self.storage_port.set(f'call:{event.call_id}:msg_id', msg_id)
+            await self.redis_storage_port.set(f'call:{event.call_id}:msg_id', msg_id)
         elif event.event_type in ['answer_call', 'end_call']:
-            msg_id = await self.storage_port.get(f'call:{event.call_id}:msg_id')
+            msg_id = await self.redis_storage_port.get(f'call:{event.call_id}:msg_id')
             if msg_id:
                 await self.message_port.delete_message(event.user_id, msg_id)
         elif event.event_type == 'finish_call' and event.status == 'NO_ANSWER':
-            msg_id = await self.message_port.send_message(event.user_id, self._format_missed(event), with_delete_button=True)
-            await self.storage_port.set(f'missed_call:{event.call_id}:msg_id', msg_id)
+            msg_id = await self.message_port.send_message(
+                event.user_id,
+                self._format_missed(event),
+                with_delete_button=True,
+            )
+            await self.redis_storage_port.set(f'missed_call:{event.call_id}:msg_id', msg_id)
         # Логика групповых: Если group_call, broadcast к нескольким user_id (симулируем)
 
     def _format_incoming(self, event: CallEvent) -> str:

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, ReplyKeyboardRemove
 
+
 class MessagePort(ABC):
     @abstractmethod
     async def send_message(
@@ -16,5 +17,5 @@ class MessagePort(ABC):
         pass
 
     @abstractmethod
-    async def start_polling(self, auth_service, notification_service, storage_port):
-        pass  # Добавлено с параметрами для точности
+    async def start_polling(self):
+        pass
