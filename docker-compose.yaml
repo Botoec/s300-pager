@@ -5,7 +5,7 @@ services:
     build: .
     container_name: pager-bot
     ports:
-      - "8065:8065"  # Если оставите FastAPI, иначе удалите
+      - "8065:8065"
 #    env_file:
 #      - ./envs/.env.dev
     depends_on:
@@ -34,31 +34,13 @@ services:
   webapp:
     image: nginx:1.27-alpine
     container_name: pager-webapp
-#    ports:
-#      - "8066:80"  # Host:8066 -> container:80
+    ports:
+      - "8052:80"
     volumes:
       - ./src/telegram_bot/webapp:/usr/share/nginx/html:ro
-#      - ./src/telegram_bot/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro  # Override default server config
     networks:
       - pager-net
 
 networks:
   pager-net:
     driver: bridge
-
-
-#  ngrok:
-#    image: ngrok/ngrok:latest
-#    container_name: ngrok
-#    restart: unless-stopped
-#    command: >
-#      http webapp:80
-#      --log=stdout
-#      --authtoken ${NGROK_AUTHTOKEN}
-#      --domain olid-roger-furnitureless.ngrok-free.dev
-#    environment:
-#      - NGROK_AUTHTOKEN
-#    depends_on:
-#      - webapp
-#    ports:
-#      - "4040:4040"    # ← очень удобно смотреть текущий URL
