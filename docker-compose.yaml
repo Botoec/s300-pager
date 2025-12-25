@@ -4,8 +4,8 @@ services:
   bot:
     build: .
     container_name: pager-bot
-    ports:
-      - "8065:8065"
+#    ports:
+#      - "8065:8065"
 #    env_file:
 #      - ./envs/.env.dev
     depends_on:
